@@ -1,0 +1,27 @@
+{
+  "name": "flight-finder",
+  "version": "1.0.0",
+  "description": "Mode 1 flight discovery from YYZ to anywhere",
+  "main": "dist/plugin/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli/main.js",
+    "dev": "ts-node src/cli/main.ts"
+  },
+  "keywords": [
+    "flights",
+    "typescript",
+    "openclaw",
+    "plugin"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}
