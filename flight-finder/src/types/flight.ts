@@ -3,7 +3,10 @@ export type TripType = "one_way" | "round_trip";
 export interface SearchParams {
   origin?: string;
   destinations?: string[];
+  regions?: string[];
+  countries?: string[];
   airline?: string;
+  banTransitCountries?: string[];
   tripType: TripType;
   departureStart: string;
   departureEnd: string;
@@ -24,6 +27,7 @@ export interface FlightResult {
   stops?: number;
   airlineCode?: string;
   airlineName?: string;
+  lastVerifiedAt?: string;
   bookingLink?: string;
   googleFlightsLink?: string;
 }
@@ -31,7 +35,10 @@ export interface FlightResult {
 export interface ProviderSearchParams {
   origin: string;
   destinations?: string[];
+  regions?: string[];
+  countries?: string[];
   airline?: string;
+  banTransitCountries?: string[];
   tripType: TripType;
   departureStart: string;
   departureEnd: string;
@@ -52,6 +59,7 @@ export interface ProviderOffer {
   stops?: number;
   airlineCode?: string;
   airlineName?: string;
+  lastVerifiedAt?: string;
   bookingLink?: string;
   googleFlightsLink?: string;
 }

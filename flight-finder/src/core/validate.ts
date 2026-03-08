@@ -1,4 +1,5 @@
 import type { ProviderSearchParams, SearchParams } from "../types/flight";
+import { listSupportedCountries, listSupportedRegions, resolveCatalogAirports } from "./airportCatalog";
 
 function isValidDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -19,8 +20,14 @@ function assertDateRange(start: string, end: string, label: string): void {
 
 export function validateAndBuildParams(input: SearchParams): ProviderSearchParams {
   const origin = (input.origin ?? "YYZ").toUpperCase();
-  const destinations = input.destinations?.map((d) => d.toUpperCase().trim()).filter((d) => d.length > 0);
+  const explicitDestinations = input.destinations?.map((d) => d.toUpperCase().trim()).filter((d) => d.length > 0);
+  const regions = input.regions?.map((r) => r.trim()).filter((r) => r.length > 0);
+  const countries = input.countries?.map((c) => c.trim()).filter((c) => c.length > 0);
   const airline = input.airline?.trim();
+  const banTransitCountries =
+    input.banTransitCountries && input.banTransitCountries.length > 0
+      ? input.banTransitCountries.map((country) => country.trim()).filter((country) => country.length > 0)
+      : ["US"];
   const maxResults = input.maxResults ?? 10;
 
   if (input.tripType !== "one_way" && input.tripType !== "round_trip") {
@@ -31,9 +38,29 @@ export function validateAndBuildParams(input: SearchParams): ProviderSearchParam
     throw new Error("origin must be a valid 3-letter IATA airport code.");
   }
 
-  if (destinations && destinations.some((d) => !/^[A-Z]{3}$/.test(d))) {
+  if (explicitDestinations && explicitDestinations.some((d) => !/^[A-Z]{3}$/.test(d))) {
     throw new Error("Each destination must be a valid 3-letter IATA airport code.");
   }
+
+  const resolvedCatalog = resolveCatalogAirports(regions, countries);
+  if (resolvedCatalog.unknownRegions.length > 0) {
+    throw new Error(
+      `Unknown regions: ${resolvedCatalog.unknownRegions.join(", ")}. Supported regions: ${listSupportedRegions().join(", ")}`,
+    );
+  }
+
+  if (resolvedCatalog.unknownCountries.length > 0) {
+    throw new Error(
+      `Unknown countries: ${resolvedCatalog.unknownCountries.join(", ")}. Supported countries: ${listSupportedCountries().join(", ")}`,
+    );
+  }
+
+  const destinationsSet = new Set<string>(explicitDestinations ?? []);
+  for (const airport of resolvedCatalog.airports) {
+    destinationsSet.add(airport);
+  }
+
+  const destinations = destinationsSet.size > 0 ? [...destinationsSet] : undefined;
 
   if (maxResults <= 0) {
     throw new Error("maxResults must be greater than 0.");
@@ -54,12 +81,27 @@ export function validateAndBuildParams(input: SearchParams): ProviderSearchParam
       throw new Error("returnStart and returnEnd are required for round_trip searches.");
     }
     assertDateRange(input.returnStart, input.returnEnd, "Return");
+
+    if (input.departureStart !== input.departureEnd) {
+      throw new Error(
+        "round_trip currently requires a single departure date. Set departureStart and departureEnd to the same date.",
+      );
+    }
+
+    if (input.returnStart !== input.returnEnd) {
+      throw new Error(
+        "round_trip currently requires a single return date. Set returnStart and returnEnd to the same date.",
+      );
+    }
   }
 
   return {
     origin,
     destinations,
     airline,
+    banTransitCountries,
+    regions,
+    countries,
     tripType: input.tripType,
     departureStart: input.departureStart,
     departureEnd: input.departureEnd,

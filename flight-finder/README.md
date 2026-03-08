@@ -68,6 +68,10 @@ node dist/cli/main.js --origin YYZ --start 2026-05-01 --end 2026-05-20
 Optional flags:
 - `--tripType one_way|round_trip` (default `one_way`)
 - `--destinations CUN,LIS,BOG` (optional list of target destination airports)
+- `--regions "East Asia,Southeast Asia"` (optional region tags; expands to airport groups)
+- `--countries "China,Japan"` (optional country tags; expands to airport groups)
+- `--airline UA` or `--airline "United Airlines"` (optional airline filter)
+- `--banTransitCountries "US,..."` (optional transit-country ban list; default blocks `US`)
 - `--returnStart YYYY-MM-DD`
 - `--returnEnd YYYY-MM-DD`
 - `--maxStops <number>`
@@ -78,6 +82,18 @@ Example with destination/date sweep:
 
 ```bash
 node dist/cli/main.js --origin YYZ --destinations CUN,LIS,BOG,KEF,NRT --start 2026-05-01 --end 2026-05-03 --maxResults 5
+```
+
+Example using region/country tags:
+
+```bash
+node dist/cli/main.js --origin YYZ --regions "East Asia" --countries "China" --tripType one_way --start 2026-05-01 --end 2026-05-03 --maxResults 5
+```
+
+Example round-trip with airline filter:
+
+```bash
+node dist/cli/main.js --origin YYZ --countries "Japan" --airline "Air Canada" --tripType round_trip --start 2026-05-01 --end 2026-05-05 --returnStart 2026-05-10 --returnEnd 2026-05-15 --maxResults 5
 ```
 
 ## Architecture

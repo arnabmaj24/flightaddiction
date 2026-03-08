@@ -91,6 +91,124 @@ const AIRLINE_NAMES: Record<string, string> = {
   UA: "United Airlines",
   WS: "WestJet",
 };
+const COUNTRY_ALIASES: Record<string, string> = {
+  US: "US",
+  USA: "US",
+  UNITEDSTATES: "US",
+  UNITEDSTATESOFAMERICA: "US",
+  CA: "CA",
+  CANADA: "CA",
+};
+const AIRPORT_COUNTRY_MAP: Record<string, string> = {
+  ATL: "US",
+  BOS: "US",
+  DFW: "US",
+  EWR: "US",
+  IAD: "US",
+  JFK: "US",
+  LAX: "US",
+  MIA: "US",
+  ORD: "US",
+  SFO: "US",
+  BGI: "BB",
+  YEG: "CA",
+  YOW: "CA",
+  YUL: "CA",
+  YVR: "CA",
+  YYC: "CA",
+  YYZ: "CA",
+  MEX: "MX",
+  CUN: "MX",
+  GDL: "MX",
+  MTY: "MX",
+  PVR: "MX",
+  PTY: "PA",
+  BOG: "CO",
+  LIM: "PE",
+  SCL: "CL",
+  EZE: "AR",
+  GRU: "BR",
+  GIG: "BR",
+  SJO: "CR",
+  LIS: "PT",
+  MAD: "ES",
+  BCN: "ES",
+  KEF: "IS",
+  DUB: "IE",
+  CDG: "FR",
+  LHR: "GB",
+  AMS: "NL",
+  FRA: "DE",
+  MUC: "DE",
+  ZRH: "CH",
+  VIE: "AT",
+  WAW: "PL",
+  PRG: "CZ",
+  BUD: "HU",
+  OTP: "RO",
+  SOF: "BG",
+  BEG: "RS",
+  RIX: "LV",
+  TBS: "GE",
+  ATH: "GR",
+  DXB: "AE",
+  AUH: "AE",
+  DOH: "QA",
+  RUH: "SA",
+  JED: "SA",
+  KWI: "KW",
+  BAH: "BH",
+  MCT: "OM",
+  AMM: "JO",
+  HND: "JP",
+  NRT: "JP",
+  KIX: "JP",
+  ICN: "KR",
+  GMP: "KR",
+  PEK: "CN",
+  PVG: "CN",
+  CAN: "CN",
+  HKG: "HK",
+  TPE: "TW",
+  SIN: "SG",
+  KUL: "MY",
+  BKK: "TH",
+  DMK: "TH",
+  CGK: "ID",
+  DPS: "ID",
+  MNL: "PH",
+  CEB: "PH",
+  SGN: "VN",
+  HAN: "VN",
+  DEL: "IN",
+  BOM: "IN",
+  BLR: "IN",
+  HYD: "IN",
+  MAA: "IN",
+  CMB: "LK",
+  DAC: "BD",
+  KTM: "NP",
+  COK: "IN",
+  SYD: "AU",
+  MEL: "AU",
+  BNE: "AU",
+  PER: "AU",
+  ADL: "AU",
+  AKL: "NZ",
+  CHC: "NZ",
+  WLG: "NZ",
+  NAN: "FJ",
+  JNB: "ZA",
+  CPT: "ZA",
+  DUR: "ZA",
+  CAI: "EG",
+  CMN: "MA",
+  NBO: "KE",
+  ADD: "ET",
+  LOS: "NG",
+  ACC: "GH",
+  DAR: "TZ",
+};
 
 export class AmadeusProvider implements FlightProvider {
   private readonly clientId: string;
@@ -113,6 +231,7 @@ export class AmadeusProvider implements FlightProvider {
     const token = await this.getAccessToken();
 
     const airlineFilter = this.resolveAirlineFilter(params.airline);
+    const bannedTransitCountries = this.resolveCountryCodes(params.banTransitCountries);
 
     if (params.destinations && params.destinations.length > 0) {
       const targeted = await this.searchWithDestinationDateSweep(token, params, params.destinations);
@@ -133,16 +252,21 @@ export class AmadeusProvider implements FlightProvider {
     }
 
     let primaryError: string | undefined;
-    try {
-      const primary = await this.searchWithFlightDestinations(token, params);
-      if (primary.length > 0) {
-        const initial = this.postProcess(primary, params.maxBudget, params.maxResults, airlineFilter);
-        return this.verifyAndFinalize(token, params, initial);
+    if (bannedTransitCountries.size > 0) {
+      primaryError = "Skipped flight-destinations because transit-country bans require itinerary-level filtering.";
+      this.log(primaryError);
+    } else {
+      try {
+        const primary = await this.searchWithFlightDestinations(token, params);
+        if (primary.length > 0) {
+          const initial = this.postProcess(primary, params.maxBudget, params.maxResults, airlineFilter);
+          return this.verifyAndFinalize(token, params, initial);
+        }
+        this.log("flight-destinations returned 0 results. Falling back to flight-offers.");
+      } catch (error: unknown) {
+        primaryError = error instanceof Error ? error.message : "Unknown flight-destinations error";
+        this.log(`Primary strategy failed: ${primaryError}`);
       }
-      this.log("flight-destinations returned 0 results. Falling back to flight-offers.");
-    } catch (error: unknown) {
-      primaryError = error instanceof Error ? error.message : "Unknown flight-destinations error";
-      this.log(`Primary strategy failed: ${primaryError}`);
     }
 
     let fallbackError: string | undefined;
@@ -374,6 +498,7 @@ export class AmadeusProvider implements FlightProvider {
         destinationCode,
         params.maxStops,
         this.resolveAirlineFilter(params.airline),
+        this.resolveCountryCodes(params.banTransitCountries),
       );
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Unknown error";
@@ -389,6 +514,7 @@ export class AmadeusProvider implements FlightProvider {
     destinationCode: string,
     maxStops?: number,
     airlineFilter?: { raw?: string; code?: string; normalizedName?: string },
+    bannedTransitCountries?: Set<string>,
   ): ProviderOffer[] {
     return (payload.data ?? [])
       .map((offer): ProviderOffer | null => {
@@ -419,6 +545,10 @@ export class AmadeusProvider implements FlightProvider {
         }
 
         if (airlineFilter && !this.matchesAirline(airlineCode, airlineName, airlineFilter)) {
+          return null;
+        }
+
+        if (bannedTransitCountries && this.hasBannedTransit(itineraries, bannedTransitCountries)) {
           return null;
         }
 
@@ -460,7 +590,9 @@ export class AmadeusProvider implements FlightProvider {
     offers: ProviderOffer[],
   ): Promise<ProviderOffer[]> {
     const verified = await this.verifyTopRoutes(accessToken, params, offers);
-    return this.postProcess(verified, params.maxBudget, params.maxResults, this.resolveAirlineFilter(params.airline));
+    const verifiedAt = new Date().toISOString();
+    const stamped = verified.map((offer) => ({ ...offer, lastVerifiedAt: verifiedAt }));
+    return this.postProcess(stamped, params.maxBudget, params.maxResults, this.resolveAirlineFilter(params.airline));
   }
 
   private async verifyTopRoutes(
@@ -617,6 +749,44 @@ export class AmadeusProvider implements FlightProvider {
 
   private normalizeAirlineName(name: string): string {
     return name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  }
+
+  private resolveCountryCodes(input: string[] | undefined): Set<string> {
+    const result = new Set<string>();
+    for (const value of input ?? []) {
+      const normalized = value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const canonical = COUNTRY_ALIASES[normalized] ?? (normalized.length === 2 ? normalized : undefined);
+      if (canonical) {
+        result.add(canonical);
+      }
+    }
+    return result;
+  }
+
+  private hasBannedTransit(itineraries: AmadeusOfferItinerary[], bannedCountries: Set<string>): boolean {
+    if (bannedCountries.size === 0) {
+      return false;
+    }
+
+    for (const itinerary of itineraries) {
+      const segments = itinerary.segments ?? [];
+      if (segments.length <= 1) {
+        continue;
+      }
+
+      for (let i = 0; i < segments.length - 1; i += 1) {
+        const transitIata = segments[i].arrival?.iataCode;
+        if (!transitIata) {
+          continue;
+        }
+        const country = AIRPORT_COUNTRY_MAP[transitIata];
+        if (country && bannedCountries.has(country)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   private buildGoogleFlightsLink(

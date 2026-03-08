@@ -37,6 +37,20 @@ function parseDestinationsArg(): string[] | undefined {
   return destinations.length > 0 ? destinations : undefined;
 }
 
+function parseListArg(name: string): string[] | undefined {
+  const raw = readArg(name);
+  if (!raw) {
+    return undefined;
+  }
+
+  const items = raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  return items.length > 0 ? items : undefined;
+}
+
 async function main(): Promise<void> {
   const tripType = (readArg("tripType") as TripType | undefined) ?? "one_way";
 
@@ -54,7 +68,10 @@ async function main(): Promise<void> {
   const params: SearchParams = {
     origin: readArg("origin") ?? "YYZ",
     destinations: parseDestinationsArg(),
+    regions: parseListArg("regions"),
+    countries: parseListArg("countries"),
     airline: readArg("airline"),
+    banTransitCountries: parseListArg("banTransitCountries"),
     tripType,
     departureStart: start,
     departureEnd: end,
@@ -73,10 +90,14 @@ async function main(): Promise<void> {
 
   results.forEach((flight, index) => {
     const datePart = flight.returnDate ? `${flight.departDate} -> ${flight.returnDate}` : flight.departDate;
-    const airlinePart = flight.airlineName ? ` - ${flight.airlineName}` : "";
+    const airlineDisplay = flight.airlineName ?? flight.airlineCode;
+    const airlinePart = airlineDisplay ? ` - ${airlineDisplay}` : "";
     console.log(
       `${index + 1}. ${flight.destination} (${flight.destinationCode}) - ${flight.currency} ${flight.price} - ${datePart}${airlinePart}`,
     );
+    if (flight.lastVerifiedAt) {
+      console.log(`   Last Verified: ${flight.lastVerifiedAt}`);
+    }
     if (flight.googleFlightsLink) {
       console.log(`   Google Flights: ${flight.googleFlightsLink}`);
     } else if (flight.bookingLink) {
